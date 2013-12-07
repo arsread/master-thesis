@@ -1,5 +1,5 @@
 if [ $# -lt 1 ];then
-	COMMENT="No_Commit"
+	COMMENT=`date +%H:%M`_NoComment
 else
 	COMMENT=$1
 fi
