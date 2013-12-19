@@ -35,9 +35,146 @@ Deferred Method提供了一套高层次的、易用性高的接口。它通过�
 public static void foo(){
 	//注入的分析代码，即对计数器的调用
 	methodCount();
-	//函数原代码
+	//原代码
 	……
 }
 \end{lstlisting}
 
-在该代码段中
+在该代码段中methodCount()是分析程序，用于方法计数。对该段程序进行并行化修改之后，对这个对方法进行计数的方法的执行过程就将交给处理线程进行处理。在Deferred Method中，由于采用的是缓存方法，程序将被改写为类似如下的代码：
+
+\begin{lstlisting}[language=Java]
+public static void foo(){
+	//把对该方法的调用存储到缓存中
+	if (getLocalBuffer().isFull){
+		processCurrentBuffer();
+		createBuffer();
+	}
+	addMethodCount();
+	//原代码
+	……
+}
+\end{lstlisting}
+
+其中addMethodCount()方法是由Deferred Method框架自动分析生成的代码，用于将对methodCount()的调用信息进行记录和储存，以让处理线程能正确进行调用。修改后的代码在每次调用前先检查当前的缓存是否已满，如果满了的话，则将缓存先交付出去，给处理线程进行处理。整个代码的生成过程都是框架采用ASM作为字节吗修改工具进行生成的，用户只要在Java语言的层面上简单地做一些定义，即可完成这个编写并行分析程序的过程。
+
+\section{框架结构}
+
+本节介绍Deferred Method的框架结构，主要从框架的接口，用户定义类，框架自动生成的代码以及结果合并几个方面来阐述整个Deferred Method的框架的设计。
+
+\subsection{框架接口}
+
+Deferred Method的接口如图所示。
+
+%\begin{figure}[!htp]
+%\end{figure}[!htp]
+
+其中，DeferredEnv集合了对整个Deferred Method框架的一些管理操作的方法，用户可以通过调用这些方法对这个框架和整个并行生成、执行过程进行监控和管理。其中，getBufferCapacity()方法可以得到缓存的大小。缓存的大小指的是该缓存能储存的最多的调用方法信息的数量，换言之，即在一般的执行中，缓存储存了多少方法后被系统视作为“满”的，从而交付给处理线程进行处理。如果这个数值没有进行初始化，Deferred Method默认会给它一个值。
+
+相应地，setBufferCapacity(int)这个方法则是用于设置缓存的大小的方法。需要注意的是，调用该方法并不会影响当前正在使用的缓存的大小。只有当当前缓存用满被交予处理线程之后，系统自动创建一个新的缓存的时候，新建的线程才被设置为被修改后的缓存的大小。
+
+processCurrentBuffer()方法则被用于将当前缓存交付予处理线程进行处理。在Deferred的默认框架中，当缓存变满时，它将会自动被交付，事实上即是调用了这个方法。Deferred Method框架将这个方法作为接口暴露给用户，主要是考虑到有些情况下用户希望能强制执行这个过程。
+
+在类DeferredExecution中的方法createDeferredEnv(...)用于创建一个环境类，即前文所提到的DeferredEnv.通过传入特定的参数，这个类能够分析用户所定义的需要被并行执行的方法，然后动态生成需要的类和代码，最后返回一个DeferredEnv类的实例，以提供给用户接口进行操作。
+
+\subsection{用户定义类}
+
+还是以简单的函数计数作为例子，在Deferred Method中，用户如果需要将方法计数的方法methodCount()作为可以被并行的任务，需要先编辑两个类来定义它，相关代码如下：
+
+\begin{lstlisting}[language=Java]
+public interface Analyze extends Deferred{
+	public void methodCount();
+}
+
+public class AnalyzeImpl implements Analyze{
+	public void methodCount(){
+		//把计数器加一的代码
+		......
+	}
+}
+\end{lstlisting}
+
+该段代码定义了一个接口和一个实现类，其中实现类实现了该接口所定义的方法，在该例子中即是Analyze中的methodCount()方法。Analyze接口继承了Deferred Method内部库提供的一个Deferred类，以作为标志。在具体代码动态生成的时候，框架会检测Analyze是否继承了Deferred类。
+
+用户定义好的接口和实现类在创建环境的时候，即调用createDeferredEnv(...)方法的时候，类本身会作为参数传递给该方法，该方法即分析这些类从而获得相关的需要并行的方法的信息。
+
+\subsection{代码动态自动生成及调用}
+
+在实际使用中，用户需要把定义的接口和类作为参数传递给创建环境的方法，然后在实际的使用中通过环境来调用需要被并行且已经定义在定义类中的方法。在本例中，相关代码如下：
+
+\begin{lstlisting}[language=Java]
+......
+static final DeferredEnv<Analyze> def = 
+		DeferredExecution.createDeferredEnv(Analyze.class, 
+							AnalyzeImpl.class, 
+							new ThreadPoolProc());
+static final Analyze mc = def.getProxy();
+......
+
+public void foo(){
+	mc.methodCount();
+	//原代码
+	.....
+}
+\end{lstlisting}
+
+在该段代码中为了能使用程序并行化，首先需要创建一个DeferredEnv的环境。之前所定义的接口Analyze和对于该接口的实现AnalyzeImpl被作为参数传递给创建环境的方法。该方法接受了这两个参数后，首先开始检查这个接口是否继承了Deferred类，继而对该接口进行分析，对各个方法进行标志,分析它们的调用参数，以便之后进行处理。
+
+接着，这个创建方法开始创建相关的类。首先它会根据缓存大小的设置和用户定义类创建一个缓存类GeneratedBuffer,它包含了一些列的数组，用于记录函数调用的信息，如调用函数的ID，调用参数等。然后方法以用户自定义类的实现（在本例中是AnalyzeImpl)为基础，开始重写一个DeferredEnv类。该类将AnalyzeImpl中的方法的行为都改写成将该方法的ID存储到相应的缓存中，并使用相同的名字，以便用户使用的时候方便调用。而真正相应的方法被隐藏起来，只有处理线程在处理的时候根据ID才能进行调用。
+
+经过代码处理后的类具有与AnalyzeImpl相同的方法，但方法行为已经改变，用户在实际调用这些方法的时候，事实上是调用了“把这些函数的调用信息暂时储存在缓存中”的方法。在完成了这一过程后，框架还在该环境中加入前文所说的一些方法，例如获得缓存大小的getBufferCapacity(),处理当前缓存的processCurrentBuffer()等。
+
+当缓存满了的时候，它会被送至处理线程处进行处理。处理线程是一系列实现了一定接口的类，它们的区别在于不同的多线程处理策略。缓存单元，即GeneratedBuffer类本身实现了Runable接口，而接口所带的run()方法即是根据记录在该缓存中的信息调用相关方法的过程。
+
+除了以上的基本功能之外，Deferred Method框架还支持结果合并的功能，这也是它区别于其他很多框架的一个功能。由于有些分析程序的结果需要储存在全局的变量中，例如内容调用树、方法调用的计数器等。由于整个并行的过程中都对这些变量进行访问，所以会有同步的问题需要考虑。如果不使用同步机制，那么对这些共享变量的访问将导致数据写入的错误，影响结果；而另一方面，如果引入锁等机制，将会不可避免地造成阻塞，影响了并行执行的效率，从而与并行框架的初衷和目的相违背。
+
+Deferred Method引入了本地结果与全局结果相合并的方法来处理这个问题。它提供了ProcessingHook这个接口，使得用户可以通过这个接口来定义并行程序在处理每个缓存时所应当具有的行为。
+
+还是以方法计数为例，这个接口的使用方法如下：
+
+\begin{lstlisting}[language=Java]
+
+public interface Analyze extends Deferred{
+	public void methodCount();
+}
+
+public class AnalyzeImpl implemenots Analyze, ProcessingHooks{
+	static final AtomicInteger global = new AtomicInteger();
+	private int local;
+
+	public beforeProcessing(){
+		local = 0;
+	}
+
+	public void methodCount(){
+		//把本地计数器加一的代码
+		local++;
+		......
+	}
+
+	public void afterProcessing(){
+		global.addAndGet(local);
+	}
+}
+\end{lstlisting}
+
+在该例子中,引入了ProcessingHooks这个接口，实现该接口的类必须具有beforeProcessing()和afterProcessing()这两个方法。beforeProcessing()方法主要用于设置程序在处理缓存前的行为，而afterProcessing()方法主要用于设置程序在处理缓存后的行为。
+
+该实现类定义了一个全局公有的变量为global，这是一个支持原子操作的变量，以保证该变量的原子性。任何两个以上的线程如果不能同时访问这个变量，以保证数据的正确性。当一个线程在访问和修改该变量的时候，如果有其他的线程也需要访问和修改，则必须阻塞等待，知道该线程访问完成。
+
+而本地变量则为每个GeneratedBuffer类实例所私有，作为一个局部的结果，等到处理完成后再合并到全局的结果中。在这个例子里，局部变量为local，每次调用methodCount()方法的时候，实质上是往local本地变量上执行加一的操作。由于这个变量是GeneratedBuffer的每个实例所私有与维护，所以不会产生同步的问题。
+
+在执行createDeferredExecution(...)方法的时候，该方法会读取AnalyzeImpl类中所实现的接口，如果这些接口中含有ProcessingHooks接口，方法会在返回的DeferredEnv环境和生成的GeneratedBuffer类中加入相关的信息。处理线程在处理这些信息的时候，由于调用了run()方法，而run()方法已经被改写加入了调用beforeProcessing()和afterProcessing()的方法，所以能成功地在处理缓存开始前与结束后分别对局部结果做初始化以及合并到全局结果的工作。
+
+\section{缓存的处理策略}
+
+Deferred Method提供了多种处理策略，如同步的处理策略，基于线程池的异步处理策略，以及自适应的处理策略等。以下将详述几种处理策略。
+
+\subsection{同步处理策略}
+
+同步处理策略，简单地将，即是由主线程同时执行缓存中的任务，即在这个模型里，只有生产者，没有消费者。故而这个模型严格地说并不是一个并行执行的程序模型，它所执行的内容是伪并行的。
+
+它在实现上的一个基本的原理是在缓存满的时候，框架会执行processCurrentBuffer()方法，该方法能把当前缓存交付给处理线程执行，而在同步的处理策略中，这个交付的过程事实上就是直接执行GeneratedBuffer的Run()方法，即处理当前缓存。
+
+与其他不采用缓存和并行的串行执行的程序分析相比，同步的处理策略事实上还引入了一些额外的开销，例如缓存的分配、初始化，DeferredEnv环境的生成等等。但在采用结果合并功能的实现中，由于采用了本地化的方法，一些被分析程序也存在着通过这个策略优化的空间。
+
+例如在本身是多线程的程序中，如果整个程序也维持着一些全局的变量，那么被分析程序在多线程中执行，也有可能会频繁访问这些变量，造成效率的低下。这个时候如果使用同步处理策略的模型，则可以使用结果合并的思想，先以缓存为单位将这些变量在局部进行处理，处理完成后再合并到全局的变量中。通过这种方式，原本对共享数据段的多次访问变成了一次访问，从而能有效地提高
