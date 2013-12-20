@@ -103,6 +103,40 @@ public ShadowThreadProc() {
 
 \subsubsection{线程索引表}
 
-在影子线程中，一个索引表被维护，该表的索引值
+在影子线程中，一个索引表被维护，该表的索引为原程序的线程，每个索引都指向一个独立的处理线程。缓存类的代码被改写，其中通过字节码加入了一个handInThread()的方法，该方法获取执行该方法的线程，即属于该缓存的线程的引用，并将其提交给处理线程的分配程序。在收到这个引用的时候，分配程序索引哈希表，取得这个线程的引用所对应的处理线程；当没有处理线程的时候，说明该线程是第一次提交缓存，分配程序会为其初始化一个处理线程，并为该线程分配一个队列。其中关键的代码如下：
+
+\begin{lstlisting}[language=Java]
+public void process(Buffer buffer) {
+	if (isRunning.get()) { // some buffers might be processed after the
+		// status is set to !isRunning
+		Thread thread = buffer.handInThread();
+		BlockingQueue<Runnable> workQueue = getQueue(thread);
+		forceSubmission(workQueue, buffer);
+	}
+}
+
+private BlockingQueue<Runnable> getQueue(Thread thread) {
+	BlockingQueue<Runnable> queue;
+	synchronized (threadWorkerMap) {
+		WorkerThread worker = threadWorkerMap.get(thread);
+		if (worker == null) {
+			queue = registerNewThread(thread);
+
+		} else {
+			queue = worker.getQueue();
+
+		}
+		return queue;
+
+	}
+
+}
+\end{lstlisting}
+
+其中，process(...)方法完成了取得对应的处理线程，并将缓存加入队列的过程；另一方面getQueue(...)方法则完成了检测处理线程是否存在，在其不存在的情况下进行初始化，并取得这个处理线程的队列的过程。
 
 \subsubsection{影子线程结束的处理}
+
+影子线程被设置为守护线程。在Java中，当运行在虚拟机上的所有进程都是守护进程的时候，这些守护进程会停止执行。另一方面，由于影子线程是跟随原程序线程启动和终止的，故而当原程序的线程终止时，其相应的线程也将同时终止。
+
+在本文中使用了jvmti来完成这一过程。jvmti
