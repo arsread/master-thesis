@@ -139,4 +139,190 @@ private BlockingQueue<Runnable> getQueue(Thread thread) {
 
 影子线程被设置为守护线程。在Java中，当运行在虚拟机上的所有进程都是守护进程的时候，这些守护进程会停止执行。另一方面，由于影子线程是跟随原程序线程启动和终止的，故而当原程序的线程终止时，其相应的线程也将同时终止。
 
-在本文中使用了jvmti来完成这一过程。jvmti
+在本文中使用了jvmti来完成这一过程。jvmti是Java提供的一套接口，编程人员可以使用这套接口对Java代码的运行进行控制。它采用了一套类似代理的机制，通过事件驱动的形式，将需要执行的一些代码注册到事件中，每次事件发生的时候，即调用该段代码。
+
+在本文的实现中，即是通过jvmti，对虚拟机的线程加入了一个钩子(Hook)，使其在结束时，同时调用代码，通知相应的处理线程即将结束，代码如下：
+
+\begin{lstlisting}[language=Java]
+public static void onThreadDeath() {
+	...
+
+	DeferredExecution.processRemainingBuffers();
+	DeferredExecution.setEndFlags();
+	DeferredExecution.stopWorkerThreads();
+
+	...
+}
+\end{lstlisting}
+
+这段代码通过jvmti提供的一套C语言的接口，被注册到虚拟机中，之后虚拟机在线程即将结束的时候，这段代码被调用，从而能完成处理剩余线程、将当前线程的标志位设置为停止、向处理线程提出停止的请求并等待其停止的过程。
+
+\section{同步等待的优化}
+
+\subsection{概述}
+
+在Deferred Method中，缓存只有在三种情况下会被送交给处理线程进行处理。一个是当缓存满的时候，一个是当线程或者主程序运行结束的时候，还有一个是用户调用processCurrentBuffer()方法的时候。
+
+然而事实上有的时候这样的机制并能完全保证缓存被以一定的效率送交处理。例如在一段程序运行的过程中，有一段时间一直没有需要填装的方法调用，则缓存可能会一直保持未满但是也非空的状态，其中已经填装好的方法调用会在比较长的一段时间内不能得到处理，从而浪费了计算资源。
+
+出现这个情况的解决方案之一是让用户自行在需要的地方调用processCurrentBuffer()方法。但这显然不是一个好的方案。一方面，这增加了用户编程的难度，用户需要自己估计缓存填装的速率，从而决定调用该方法的点，这一定程度上也可能带来调用不当造成的效率不增反降；另一方面，程序运行的速率和一些代码的执行程度是无法估计的，只能在运行的时候才能得到决定。
+
+本文提出的解决方案的思路是考虑这种情况发生的条件。一个来源就是同步机制的引入。由于锁等同步机制的使用，线程在遇到同步情况时，会发生阻塞而进入等待，这个等待的时间是不确定的，所以是造成缓存得不到处理的可能因素之一。本文提出的一个解决方案是对Java里的锁使用进行优化，使之能处理等待阻塞的情况。
+
+\subsection{设计}
+
+Java中的锁主要分为两种：
+
+\begin{itemize}
+	\item 显式锁。Java提供了一套默认的锁机制给开发者使用，如ReadWriteLock,ReentrantLock，ReentrantReadWriteLock等。
+	\item 隐式锁。Java为了方便编程，提供了synchronized关键字，通过该关键字，开发者可以便捷地写出同步代码。
+\end{itemize}
+
+对于显式锁的情况，由于以上几种锁都是基于java.util.concurrent.locks.Lock类中的lock()和unlock()方法的，故而解决的思路可以通过静态的方法，修改默认库中该类里lock()方法的行为，使之在调用lock()遇到阻塞的时候，先检查缓存的状态，如果缓存有可以被处理的调用，则先将缓存送交处理。
+
+隐式锁的情况则稍微复杂一点。synchronized关键字在Java中有两种用法，同步函数块和同步代码段。如以下代码所示：
+
+\begin{lstlisting}[language=Java]
+//同步函数块
+synchronized public void foo(){
+	......
+}
+
+//同步代码段
+public void foo(){
+	synchronized(SomeObj){
+		......
+	}
+}
+\end{lstlisting}
+
+前者以该类为锁，同步整个函数块；后者以SomeObj类为锁，同步相应的代码段。由于synchronized是Java语法中内置的关键字，Java虚拟机有相应的机制和字节码来处理，故而无法像显示锁一样通过静态修改库的方法来进行处理。
+
+本文采用的方法是动态修改。由于Java虚拟机在执行的时候是通过ClassLoader机制来动态加载类的，故而我们可以使用ClassLoader在以字节流形式读入类的时候，用ASM对其进行分析，动态抓取使用了synchronized关键字的部分，然后对其执行代码注入。
+
+\subsection{实现}
+
+\subsubsection{显式锁}
+
+显式锁的修改在编译阶段即可完成，同样采用的是ASM作为工具，在字节码的层面进行修改。修改后的Lock中的lock()代码也为字节码，我们可以把它写成如下的Java代码：
+
+\begin{lstlisting}[language=Java]
+
+public void Lock(){
+	if (!tryLock()){
+		processCurrentBuffer();
+		renamedLock();
+	}
+}
+
+public void renamedLock(){
+	//原来的Lock()方法
+}
+
+\end{lstlisting}
+
+该过程为：首先ASM从Java的库中找到并读入Lock类的字节码，对其进行分析，找到其中的lock()方法，将其名字和签名改写为renamedLock();而重写一个新的lock()方法，其行为是对系统的状态先进行判断，如果锁会被阻塞，则先处理当前的缓存，然后再调用原来的Lock()方法，即改写后的renamedLock()方法，进入阻塞。
+
+其中,tryLock()方法是Lock类提供的一个方法，它是一个“试图上锁”的方法，当调用成功时，方法如lock()一样执行上锁，并返回真，当锁被占用而导致它无法上锁时，该方法不会陷入阻塞，而是返回一个假值。
+
+\subsubsection{隐式锁}
+
+隐式锁的修改是基于动态代码修改进行的。字节码是Java平台所采用的一种中间代码，由Java虚拟机进行执行，具有跨平台等有点，以隐式锁的两种形式为例子，我们看以下的一段程序：
+
+\begin{lstlisting}[language=Java]
+public class SyncSample {
+	synchronized public void foo(){
+		System.out.println("Hello world!");
+	}
+
+	public void bar(){
+		synchronized(this){
+			System.out.println("Hello world!");
+		}
+	}
+}
+\end{lstlisting}
+
+该段代码锁编译出来的字节码如下所示：
+
+\begin{lstlisting}[language=Java]
+public class SyncSample extends java.lang.Object{
+	......
+
+	public synchronized void foo();
+	Code:
+	......
+
+	public void bar();
+	Code:
+	0:   aload_0
+	1:   dup
+	2:   astore_1
+	3:   monitorenter
+	......
+	18:  aload_1
+	19:  monitorexit
+	......
+	22:  return
+	......
+}
+\end{lstlisting}
+
+可以看到，synchronized方法是直接写在方法签名中的，而synchronized块则是用了特殊的字节吗monitorenter和monitorexit两个命令来标定整个synchronized代码块的范围。这两个字节码的使用是基于Java的Monitor的机制。
+
+Java为每个对象及其实例都维护一个监视器，即Monitor，用于同步。同一个时刻只有一个线程能够持有这个Monitor。我们可以把Monitor看作synchronized关键字里的锁，而monitorenter和monitorexit这两个方法就是这个锁的lock()和unlock()方法。
+
+于是我们可以参考之前处理显式锁的方式，把对monitorenter的调用改成先尝试持有Mmonitor，如果尝试失败，并不马上进入阻塞，而是返回一个为假的布尔值，然后先处理当前缓存，再调用monitorenter进行上锁。
+
+Java字节码并没有类似Lock类里的tryLock()的方法，但sun.misc.Unsafe类里面提供了tryMonitorEnter()的方法，同样是一个“尝试获得监视器”的行为的方法。我们只需要加入对这个方法的调用和判断即可完成对synchronized代码块的修改。
+
+synchronized方法在字节码里并没有以monitorenter或者monitorexit的字节码的形式存在，Java虚拟机会自动识别该关键字然后进行获得Monitor的行为。在这种情况下，字节码是无法进行直接处理和修改的。注意到上文示例的两个方法的作用是等同的，即synchronized方法事实上就是对整个方法的代码段用synchronized(Obj)进行上锁/获得监视器的过程。当方法为非静态方法时，Obj即为方法所属类的实例；当方法为动态方法时，Obj即为类本身的class。
+
+于是通过这种改写，在synchronized方法的方法入口和所有出口（包括异常出口）处分别加入monitorenter和monitorexit字节码，将其改写为同步整个方法的synchronized代码块，然后应用同样的方法，即可完成对所有synchronized关键字相关的代码的修改。
+
+\section{带有返回值的方法}
+
+\subsection{概述}
+
+默认情况下，Deferred Method只能支持不带返回值的方法。这是由于Deferred Method设计的初衷是为了并行处理一些不会影响原程序执行的方法。
+
+但在实际应用中，还是会产生需要返回值的情况，比如执行到中间的分析程序需要拿到前面分析程序的结果，从而进行进一步的处理。在这种情况下，Deferred Method包括大部分其他的并行程序分析框架都无法完成这一功能。
+
+本文针对这一问题，在Deferred Method上进行了修改和优化，使其能支持方法返回值并在之后使用这些返回值。完成该功能需要注意的一点是它是建立在并行化的基础上的，所以取值的时候有可能该值仍在被并行处理生成中而不能被得到，此时试图获取该值的线程必须阻塞等待，直至该值被处理完成。下文探讨其设计与实现。
+
+\subsection{设计}
+
+由于返回值必须能提供同步的机制，从而实现线程在并行处理时取值与返回值的同步与时序的问题，故本小节所提出的方法使用了一个泛型类Ret<Obj>来将这些返回值的类型封装起来。
+
+返回值类型提供了多个接口，可以通过以下的Deferred Method的用户自定义接口的例子来表示其使用方式：
+
+\begin{lstlisting}[language=Java]
+public interface RetTestIntf extends Deferred{ 
+	Ret<Long> calc(long sum, long adder);
+	Ret<Integer> getPlusOne(int i);
+}
+\end{lstlisting}
+
+原本的方法的返回值应该是long和int，在采用了该接口之后，这两个方法被封装为Ret<Long>和Ret<Integer>。在实际使用中，当原程序调用这两个方法时，方法的调用信息被缓存，然后缓存返回一个没有设置值的Ret<Long>或者Ret<Integer>的类型的实例。
+
+用户在使用该实例时，可以使用其中的两个方法，如get方法用于取得值（如果在该实例没有被赋值的情况下，则该方法会造成阻塞），set方法用于设置值等。
+
+\subsection{实现}
+
+在实现上，与其他没有返回值的方法相比，由于该方法在改写的时候行为会被修改为往缓存中添加调用方法的信息；另一方面，该方法又必须即时返回一个Ret<Obj>类型的返回值，故而改写的过程需要修改。
+
+在改写的过程中，环境需要首先分析该方法是否具有返回值，如果没有返回值，则按之前的方法进行处理；如果具有返回值，则必须在完成将方法添加到缓存的行为后，新建一个空的Ret<Obj>的值返回给用户。
+
+当缓存处理完毕时，相应的返回值也处理完毕。这些返回值被储存在缓存中。缓存中同时保留着一开始返回给用户的Ret<Obj>的引用，当缓存处理完毕，提交相关的编号给环境的时候，环境同时执行检测，将有返回值的方法的返回值设置（事实上就是复制）给之前返回给用户的实例，从而用户可以拿到处理结果。
+
+为了完成这个复制的过程，Ret<Obj>同时也提供了mov()方法。值得注意的是，有可能采用get()方法的时候，可能还有一些方法储存在当前缓存中，这些方法有可能包含get()要取得的返回值的方法，所以get()方法在执行的时候，需要先处理当前线程的缓存。
+
+\subsection{使用建议}
+
+由于带有返回值的方法会带来同步上的等待的问题，会引入等待，造成线程的阻塞，这与并行化的思想在一定程度上是相违背的。所以虽然本文实现了这一功能，但还是主要针对必须使用返回值的情况。当这种情况出现的频繁时，事实上表明这个程序在时序上是有比较多的逻辑前后关系的，并不使用于并行化。所以一个建议是在需要使用比较多返回值的程序进行并行化的时候，要先考虑这个程序是否值得采用这个框架。
+
+\section{本章小结}
+
+本章首先分析了Deffered Method在功能和效率上的一些不足，然后分别从检查点、影子线程、锁同步、返回值等四个方面提出优化和改进，完成设计和实现。
+
+下章将根据这些改进中的一部分设计和进行实验。
