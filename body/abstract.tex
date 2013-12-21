@@ -9,32 +9,50 @@
 
 \begin{abstract}
 
-	随着计算机编程语言特性的发展，在程序分析领域，静态分析方法受到了越来越多的约束，动态分析的重要性越来越高。动态程序，顾名思义就是在执行程序的同时，对程序进行分析，以达到检测其中的bug、对其进行优化等等目的。相比于静态分析，动态分析能有效地减少分析时间，并能在不获得源代码的情况下开始进行分析。
+近年来，计算机硬件技术发展日新月异，多核、分布式等领域也产生了许多新技术，使一些大规模处理的任务效率有效地得到提高。因此并行化编程也称为了热门话题，相关地技术被广泛地应用于其他领域。
 
-	然而在动态分析中，一些重量级的动态分析程序所产生的问题也对研究者提出了挑战。一方面，这些分析程序的运行开销较大，给原程序的执行带来了很大的影响，降低了原程序的执行效率；另一方面，由于分析程序是伴随着被分析程序的执行而执行的，其执行顺序、执行线程等都受到了限制，有些能进行并行或者乱序执行的方法没有得到优化，使得执行过程过于冗长。而计算机技术的提高，多核、多处理器计算机的出现和发展，给并行执行动态程序分析带来了可能。
+程序分析就是其中之一。传统的程序分析领域里有许多任务的复杂度太高，会耗费许多时间，例如符号执行、指针分析等等，这些技术的算法复杂度决定了分析者只能在效率和精度上做权衡。而并行化的引入在一定程度上放宽了效率的限制。研究表明，程序分析中，有很多方法和任务并没有需要返回值，并且这些方法之间没有严格的时序关系，这表明这些方法是可以被并行的。
 
-	相关研究发现，在影响效率的动态分析程序中，有一部分代码与方法并不会对原程序产生影响，这就意味着这些代码可以被剥离原程序进行并行执行，从而提高其效率，减少其执行时间。
+但并行化又带来了相应的问题。在一些细颗粒度的任务中，由于并行处理需要各线程间进行通信，这种通信带来的开销在并行频繁的时候会非常大，有时甚至要高于串行执行本身的开销，使得最终的效率不升反降，并行化的初衷就失去了意义。
 
-	但简单地对这些程序进行并行化可能会引入负面的影响。一方面，由于某一些动态程序的方法需要访问一些共用数据段，仅仅不采取策略而只是单纯地将这些程序分配给不同的核执行，可能会造成更多不必要的访问共享数据结构的开销，从而使总体效率不升反降。
+为了解决这一问题，以Deferred Method为代表的一系列框架通过使用基于缓存的处理机制来执行并行化。每个分析程序的线程都维持着一个缓存，程序使用并行方法时，并没有马上交付给相应的处理线程进行处理，而是先在缓存里把调用信息储存起来，等到缓存填满的时候，再交给处理线程进行处理。与其他类似框架相比，Deferred Method框架具有多线程，支持结果合并等特点。
 
-	一个有效的解决方案就是把需要并行执行的动态程序先放入缓存中，在累积到一定数量的方法时，将该缓存统一执行，这样一方面提高了数据的局部性，另一方面也减少了对共享数据结构频繁访问所产生的开销。本课题即是基于这个思想所产生。
+本文即是在Deferred Method框架的基础上做了优化，这些优化包括：加入检查点，允许一部分任务集之间有粗颗粒度的时序逻辑；新增了影子线程，允许多线程程序中每个线程的缓存都能以顺序进行执行；对锁和synchronized关键字的机制做优化，避免因为线程阻塞而使得缓存中的部分任务长时间得不到执行；支持带有返回值的方法的并行化，增强了该框架的适用范围。
+
+本文的创新点主要有两个方面：
+
+\begin{enumerate}
+	\item 高层面的接口。用户不需要关心这个框架的底层实现，而只需要简单地了解这套接口的使用方法，就可以用很少的代码完成并行方法的设置。
+	\item 字节码动态生成。整个框架的行为对用户是透明的，字节码分析、方法行为的重写等过程都是由框架自动根据用户的需要完成的。
+\end{enumerate}
+
+通过使用改进后的方法,Deferred Method框架的功能得到了完善，开发者可以使用改进后的框架完成具有更多功能的并行程序，包括一定时序逻辑和返回值等，另外通过同步优化，该框架在效率上也有提高。相关的实验也表明，这些功能在表现上是符合预期的。总而言之，本文提出的优化为并行程序分析的开发者带来了更多的选择，提高了并行程序分析的适用范围。
 
   \keywords{\large 并行计算 \quad 程序分析 \quad 代码生成}
 \end{abstract}
 
 \begin{englishabstract}
 
-An imperial edict issued in 1896 by Emperor Guangxu, established Nanyang Public School in Shanghai. The normal school, school of foreign studies, middle school and a high school were established. Sheng Xuanhuai, the person responsible for proposing the idea to the emperor, became the first president and is regarded as the founder of the university.
+In recent years, with the development of computer hardware technique, some new systems has been invented to help high-performance processing, such as multi-core systems and distributed systems. Those technique help increase the efficiency of some large scale task, which make parallel programing a hot topic.Related usage of it has been applied to other fields.
 
-During the 1930s, the university gained a reputation of nurturing top engineers. After the foundation of People's Republic, some faculties were transferred to other universities. A significant amount of its faculty were sent in 1956, by the national government, to Xi'an to help build up Xi'an Jiao Tong University in western China. Afterwards, the school was officially renamed Shanghai Jiao Tong University.
+Program analysis is among such fields. Traditionally, there exsits some tasks of program analysis which has a high complexity. These tasks, which includes symbolic execution, point-to analysis, will consuming large amout of time for processing the analyzing. In these cases, developers was forced to make a trade-off between accuracy and efficiency.
 
-Since the reform and opening up policy in China, SJTU has taken the lead in management reform of institutions for higher education, regaining its vigor and vitality with an unprecedented momentum of growth. SJTU includes five beautiful campuses, Xuhui, Minhang, Luwan Qibao, and Fahua, taking up an area of about 3,225,833 m2. A number of disciplines have been advancing towards the top echelon internationally, and a batch of burgeoning branches of learning have taken an important position domestically.
+With the assisstance of parallelization, this problem can somehow be reduced by executing the tasks simutaneously. It is found that many of the tasks in program analysis do not require returning a value as well as some executing order, which gives the possibility to parallelize them.
 
-Today SJTU has 31 schools (departments), 63 undergraduate programs, 250 masters-degree programs, 203 Ph.D. programs, 28 post-doctorate programs, and 11 state key laboratories and national engineering research centers.
+However other trade-off are introduced in such parallelization. Particularly, in some fine-grained tasks, overhead keeps high while inter-thread communication happens frequently. In extreme cases, the overhead will overwhelm the advantage of parallelization, which make it lose its motivation.
 
-SJTU boasts a large number of famous scientists and professors, including 35 academics of the Academy of Sciences and Academy of Engineering, 95 accredited professors and chair professors of the "Cheung Kong Scholars Program" and more than 2,000 professors and associate professors.
+Some frameworks aim to solve this problem. Deferred Method is representive by using a mechanism of buffering. Instead of processing such methods directly, it will first deposit the information of the method invokation to a thread-local buffer. Once the buffer is full, it will be handed it to the the processer which consists of a set of threads. Comparing to other similar frameworks, Deferred Method suports multi-threads, result aggregation and so on.
 
-Its total enrollment of students amounts to 35,929, of which 1,564 are international students. There are 16,802 undergraduates, and 17,563 masters and Ph.D. candidates. After more than a century of operation, Jiao Tong University has inherited the old tradition of "high starting points, solid foundation, strict requirements and extensive practice." Students from SJTU have won top prizes in various competitions, including ACM International Collegiate Programming Contest, International Mathematical Contest in Modeling and Electronics Design Contests. Famous alumni include Jiang Zemin, Lu Dingyi, Ding Guangen, Wang Daohan, Qian Xuesen, Wu Wenjun, Zou Taofen, Mao Yisheng, Cai Er, Huang Yanpei, Shao Lizi, Wang An and many more. More than 200 of the academics of the Chinese Academy of Sciences and Chinese Academy of Engineering are alumni of Jiao Tong University.
+In this dissertion, the implementation and optimiztion was performed based on the Deferred Method framework. The work contains CheckPoint which allows some coarser-grained task sets to execute in order, Shadow Thread which allows buffers produced by the same thread to be execute in order, an optimization of the sychronization in Java to help process the buffer quickly, and a implementation of methods which have return values.
 
-  \englishkeywords{\large SJTU, master thesis, XeTeX/LaTeX template}
+The insights of this work include:
+
+\begin{enumerate}
+	\item High-level API. Programmers needn't care about the low-level implementation of this framework. They just have to know the interface of this framework and features, which can help them complete the configuration with a litte amount of code.
+	\item Dynamic code generation. The manners of the whole framework is transparent to the user. Bytecode parsing and method rewriting are performed by the framework automatically with the configuration written by the user.
+\end{enumerate}
+
+The features of Deferred Method become more abundant by such optimization and development. Programmers can use the modified framework to complete tasks with more various manners, such as certain time order and return values. On the other hand the synchronization optimization help increase the efficiency of the framework. Experiments on such works prooved that they matched the expection. In conclusion, such implementation and optimization bring more choices for programers who develop parallel programs, hence the suitable range of parallel program analysis is widen.
+
+  \englishkeywords{\large Parallelization, Program Analysis, Code Generation}
 \end{englishabstract}
