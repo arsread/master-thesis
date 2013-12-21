@@ -11,12 +11,151 @@
 
 \begin{itemize}
 	\item Java Grande.这是一套有名的Java并行测试用例，主要包含一些并行程序，本章将选取其中的一部分测试，改写成Deferred Method的形式用于实验。虽然这些测试并不是分析程序，但对于本框架能否在并行上达到并行框架的效果，是有参考意义的。
-	\item Dacapo上的方法计数。Dacapo也是一套Java的测试框架，本文将在Dacapo上进行方法计数，比较各种功能和策略的实现性和耗费时间。
+	\item Dacapo。Dacapo也是一套Java的测试框架，本文将在Dacapo上进行方法计数，比较各种功能和策略的实现性和耗费时间。
 \end{itemize}
 
 \section{Java Grande实验}
 
 \subsection{Java Grande介绍}
-Java Grande\cite{javagrande}是
 
-\section{Dacapo实验和Dacapo介绍}
+Java Grande\cite{javagrande}是一套测试集，用于测试和比较一些Java的特定的程序集。这些程序集包括使用大数据，大的I/O或者网络或者大容量内存等的程序。这些程序不禁包括科学和工程上的应用，同时也包括诸如经济学上的一些模型模拟等的应用。
+
+该测试集目前是开源的，包括以下几个部分：
+
+\begin{itemize}
+	\item 序列化的测试。适用于单处理器处理。
+	\item 多线程测试。适用于使用共享内存的多处理器处理。
+	\item MPJ测试。适用于使用分布式内存的多处理器处理。
+	\item 语言比较测试。该部分是把序列化测试中的测试集重新用C语言写成，用于语言间的比较。
+\end{itemize}
+
+其中，根据本文所面向的程序，我们选择多线程测试的部分。
+
+多线程的部分主要分为底层操作部分、内核部分和大规模应用几个部分。这里我们选择内核部分的测试。这些测试包括：
+
+\begin{itemize}
+	\item Series。该测试主要计算函数$f(x) = (x + 1)^x$的前N个傅立叶系数。这个测试里计算了很多的超越函数和三角函数 。它最花费时间的计算来源于在傅立叶系数计算上的循环。每次循环里的迭代都是独立的，所以这个测试能够被分配给多个线程进行处理，每个线程负责一部分计算，最后总结合并结果。
+	\item LUFact。该测试用于计算一个$N \times N$的线性系统的解。它使用了LU的因式分解和三角函数计算的方法。事实上它是Linpack测试集的Java版。
+	\item SOR。该测试采用了100次迭代的逐次超松弛（succussive over-related）方法，对一个$N \times N$的网格进行处理。这个测试包括了一个多次迭代的循环和两个内嵌的循环，这些循环都对这个网格进行遍历。根据更新的规则，每次迭代里，当更新一个节点的信息的时候，相邻节点的值是需要被使用到的。因此这个测试本质上还是串行的。但为了能提高其并行性，测试采用了一个“红-黑”顺序的机制，该机制能够使得只有相邻的节点需要等待同步，而不是采用一个全局锁。
+	\item Crypt。这个测试在一个N字节的数组上采用某些算法进行加密和解密的过程。这个测试共有两个循环，每个循环都能被分解为单独的互不影响的部分，故而可以被并行。
+	\item SparseMatmult。这个测试使用了一个非结构化的稀疏矩阵，该矩阵储存于一个行压缩的格式和规定的稀疏结构。主要的测试过程是非直接的访问和不规则的内存引用。该测试会使用200次迭代，并使用一个$N \times N$的矩阵。
+\end{itemize}
+
+在这些测试中，由于LUFact引入了全局等待和全局锁，所以不适合使用Deferred Method进行并行。其他的测试，我们都将在源代码的情况下将其改写成采用Deferred Method框架的方法，然后对比其结果。
+
+\subsection{实验结果}
+
+实验结果如下表所示。
+
+\begin{table}[htbp]
+	\centering
+	\caption{\label{table1}Java Grande的实验结果}
+	\begin{tabular}{c|c|c|c|c|c}
+		\hline
+		测试用例 & 测试类型 & 实验一(s) & 实验二(s) & 实验三(s) & 平均用时(s) \\
+		\hline
+		\multirow{2}{*}{Series} & 原程序 & 103.43 & 111.22 & 104.34 & 106.33 \\
+		\cline{2-6}
+		& 修改后 & 86.97 & 86.98 & 86.89 &86.95 \\
+		\hline
+		\multirow{2}{*}{Crypt} & 原程序 & 37.01 & 36.05 & 36.99 & 36.70 \\
+		\cline{2-6}
+		& 修改后 & 12.19 & 11.888 & 12.042 &12.04 \\
+		\hline
+		\multirow{2}{*}{SparseMatmult} & 原程序 & 3.23 & 3.20 & 3.16 & 3.20 \\
+		\cline{2-6}
+		& 修改后 & 0.40 & 0.32 & 0.28 & 0.33 \\
+		\hline
+		\multirow{2}{*}{SOR} & 原程序 & 267.45 & 300.12 & 280.29 & 282.62 \\
+		\cline{2-6}
+		& 修改后 & 911.12 & 908.11 & 868.43 & 895.89 \\
+		\hline
+	\end{tabular}
+\end{table}
+
+其中每个同样条件下的实验都做了三次，通过柱型图可以看出其
+
+\section{Dacapo实验}
+
+\subsection{Dacapo及DiSL介绍}
+
+本节将使用Dacapo的测试用例集作为测试的基准。通过在这套测试用例集上运行方法计数的程序分析，比较使用Deferred Method与不使用的情况下的影响，并对新增的一些功能对程序运行效率的影响进行测试。在方法注入的工具上，本章选择了DiSL作为工具。
+
+\subsubsection{Dacapo}
+
+Dacapo\cite{dacapo}是一个建立在Java语言上的测试集，其中包括了语言编程、内存管理、计算机体系结构等多方面的内容。这个测试集是由一系列开源的、实际应用的程序组成。本章所做的实验采用了其中部分的测试用例，包括：
+
+\begin{itemize}
+	\item avrora。它模拟了一些AVR微控制器上的程序。
+	\item batik。它以Apache Batik上一些单元测试为基础，产生了一些向量图。
+	\item fop。它读入一个XSL-FO文件，分析该文件，并将该文件格式化，最终产生一个PDF文件。
+	\item h2。它执行了一个类似JDBCbench的内存测试用例，同时执行了一个类似银行交易模型的程序。
+	\item jython。它作为解释器，解释了基于Python的pybench的测试用例。
+	\item luindex。它使用lucene来为一系列的文档创建索引，包括莎士比亚的文集等。
+	\item lusearch。它同样使用lucene来搜索一些列文档里的关键字。
+	\item pmd。它分析一些Java的类，侦测源代码里的一些问题。
+	\item sunflow。它用光线追踪的方法来渲染一系列的图片。
+	\item xalan。它将一些XML的文件转换为HTML格式的里的关键字。
+	\item pmd。它分析一些Java的类，侦测源代码里的一些问题。
+	\item sunflow。它用光线追踪的方法来渲染一系列的图片。
+	\item xalan。它将一些XML的文件转换为HTML格式的文件。
+\end{itemize}
+
+\subsubsection{Dacapo}
+
+DiSL\cite{disl}是瑞士卢加诺大学开发的一个用于Java代码动态注入的工具。它提供了一套高层的接口，允许用户通过比较简单的调用完成对Java代码的修改。它的切点/通知机制来源于诸如AspectJ等面向方面编程模型，并具有以下特点：
+
+\begin{itemize}
+	\item 开放切点的模型。
+	\item 兼容Java及Java虚拟机。
+	\item 内置通知和本地变量的传递。
+	\item 对静态和动态上下文信息有效的获取。
+	\item 不需要环绕保卫型的通知。
+	\item 高字节码覆盖。
+\end{itemize}
+
+DiSL运行时，在加载类时会加入用户定义的代码注入行为，再交付给Java虚拟机进行执行，以达到动态注入的效果。
+
+\subsection{实验设计}
+
+以下是本次实验使用的DiSL代码。
+
+\begin{lstlisting}[language=Java]
+
+public class DiSLClass {
+	
+	static final DeferredEnv<Analyze> def = 
+			DeferredExecution.createDeferredEnv(Analyze.class, 
+								AnalyzeImpl.class, 
+								new AdaptiveProc());
+	static final Analyze mc = def.getProxy();
+
+	@Before(marker=BodyMarker.class)
+	public static void onMethodEntry() {
+		mc.addOne();
+	}
+
+}
+
+public interface Analyze extends Deferred{
+	public void addOne();
+}
+
+public class AnalyzeImpl implements Analyze{
+	public void addOne(){
+		Profile.cnt.addAndGet();
+	}
+}
+
+public class Profile {
+	public static AtomicLong cnt = new AtomicLong();
+}
+\end{lstlisting}
+
+该代码中，mark=BodyMarker.class表明了该分析是以函数体为单位的，@Before表示该方法应用于函数体之前的。
+
+这段代码主要进行了一个将方法计数的代码注入被分析程序的过程。
+
+\subsection{实验结果}
+
+实验结果如下表所示。
