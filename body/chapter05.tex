@@ -204,10 +204,21 @@ public class DiSLClass {
 
 \subsubsection{检查点功能的数据}
 
-\begin{table}[htbp]
+检查点功能的测试分为几组，首先是不使用Deferred Method进行并行分析的原程序,其次是使用了原生Deferred Method框架的原程序，然后在其中加入了检查点的功能，做了四组实验，分别为：
+
+\begin{itemize}
+	\item 不用检查点。即在并行过程中采用的框架有检查点功能，但并不进行使用。由于检查点功能引入了一些数据结构和处理机制，故而会带来开销，本实验用于对照这部分开销的大小。
+	\item 50、100、1000频度的检查点。此处的频度为每隔一定的方法调用数后即使用检查点的功能，如50频度是指没50次方法调用使用一次检查点，依次类推。
+\end{itemize}
+
+实验结果如表\ref{tab:tab1}所示。
+
+\begin{table}[!hpb]
 	\centering
-	\bicaption[fig:dig1]{检查点数据的实验结果}{检查点数据的实验结果}{Table}{The test result of CheckPoint}
+	\bicaption[tab:tab1]{检查点数据的实验结果}{检查点数据的实验结果}{Table}{The test result of CheckPoint}
 	\begin{tabular}{c|c|c|c|c|c|c}
+		\hline
+		测试用例 & 原程序 & 原生并行 & 不用检查点 & 50频度 & 100频度 & 500频度 \\
 		\hline
 		pmd & 5910.75 & 6477.75 & 8955.38 & 15251.9 & 10999 & 8085.88 \\
 		\hline
@@ -232,12 +243,24 @@ public class DiSLClass {
 	\end{tabular}
 \end{table}
 
-\subsubsection{检查点功能的数据}
+实验结果表明，使用了并行框架之后，部分测试用例能够得到效率上的提升。由于方法计数是极小颗粒的并行，所以在并行过程中线程间通信的时间其实和串行执行的时间是差不多的，这也解释了一部分测试为什么会比原程序没有很大提升。从这个角度考虑，事实上Deferred Method也达到了降低进程间通信开销的作用，效率上还是比较理想的。
+
+检查点的引入，在完善原框架功能的情况下，也引入了一部分开销。从表格中可以看出，除了个别例子之外，大部分测试用例里加入检查点功能的Deferred Method框架都能表现出与原框架相比差别不大的效率，可见该功能是可行的。
+
+检查点的使用会强行处理当前进程，故而在检查点使用频繁的时候，缓存会有更高概率在未满的时候即被处理，从而降低了框架效率，本实验也证明了这一点，当使用频度增大时，实验的运行时间明显上升。所以开发者在使用这个功能的时候，必须保证尽量只在有必要的时候使用，否则会影响效率。
+
+\subsubsection{影子线程的数据}
+
+本式样中原生的并行采用的是自适应的处理策略，本实验保持其他条件不便，改用影子线程作为处理器。
+
+实验结果如表\ref{tab:tab2}所示。
 
 \begin{table}[htbp]
 	\centering
-	\bicaption[fig:dig1]{检查点数据的实验结果}{检查点数据的实验结果}{Table}{The test result of CheckPoint}
+	\bicaption[tab:tab2]{检查点数据的实验结果}{检查点数据的实验结果}{Table}{The test result of CheckPoint}
 	\begin{tabular}{c|c|c|c}
+		\hline
+		测试用例 & 原程序 & 原生并行 & 影子线程 \\
 		\hline
 		pmd & 5910.75 & 6477.75 & 10250.2 \\
 		\hline
@@ -262,12 +285,18 @@ public class DiSLClass {
 	\end{tabular}
 \end{table}
 
+该结果与自适应处理策略相比并不理想，这一定程度上是由于实验机器计算资源不够所限制。另一方面，由于测试用例本身设计的缘故，也不适合使用影子线程进行处理。
+
+影子线程的一个好处在于对于原程序的每个线程都只分配一个专用的线程进行处理，这样可以保证该线程所产生的缓存都是被按顺序处理的。
+
 \subsubsection{检查点功能的数据}
 
 \begin{table}[htbp]
 	\centering
-	\bicaption[fig:dig1]{检查点数据的实验结果}{检查点数据的实验结果}{Table}{The test result of CheckPoint}
+	\bicaption[tab:tab3]{检查点数据的实验结果}{检查点数据的实验结果}{Table}{The test result of CheckPoint}
 	\begin{tabular}{c|c|c|c|c|c|c}
+		\hline
+		测试用例 & 原程序 & 锁优化 & 返回值 \\
 		\hline
 		pmd & 459.5 & 214.375 & 502.125 \\
 		\hline
