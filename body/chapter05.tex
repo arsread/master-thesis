@@ -45,6 +45,7 @@ Java Grande\cite{javagrande}是一套测试集，用于测试和比较一些Java
 
 \subsection{实验结果}
 
+这个测试集为每个测试都提供了大、中、小三种测试规模，这里统一采用大规模进行测试
 实验结果如下表所示。
 
 \begin{table}[htbp]
@@ -73,7 +74,9 @@ Java Grande\cite{javagrande}是一套测试集，用于测试和比较一些Java
 	\end{tabular}
 \end{table}
 
-其中每个同样条件下的实验都做了三次，通过柱型图可以看出其
+其中每个同样条件下的实验都做了三次，通过表格的数据可以看出，修改之后，采用了Deferred Method的缓存机制的方法基本有效率上的提升。在Crypt和SparseMatmult测试中，由于使用的原程序的处理线程数量较多，此时Defferred Method中自适应处理策略能够动态调整资源分配状况的优势就体现了出来，这也是它优于其他部分并行框架的一点。
+
+在SOR测试中，Defferred Method的表现不好，这是由于该程序本身结构不适合采用缓存机制所带来的。由此可以看出，该框架在提高并行效率上是有一定作用的，但需要依据不同的测试情况而定，否则会影响结果。
 
 \section{Dacapo实验}
 
@@ -123,11 +126,11 @@ DiSL运行时，在加载类时会加入用户定义的代码注入行为，再�
 \begin{lstlisting}[language=Java]
 
 public class DiSLClass {
-	
+
 	static final DeferredEnv<Analyze> def = 
-			DeferredExecution.createDeferredEnv(Analyze.class, 
-								AnalyzeImpl.class, 
-								new AdaptiveProc());
+	DeferredExecution.createDeferredEnv(Analyze.class, 
+	AnalyzeImpl.class, 
+	new AdaptiveProc());
 	static final Analyze mc = def.getProxy();
 
 	@Before(marker=BodyMarker.class)
@@ -154,8 +157,131 @@ public class Profile {
 
 该代码中，mark=BodyMarker.class表明了该分析是以函数体为单位的，@Before表示该方法应用于函数体之前的。
 
-这段代码主要进行了一个将方法计数的代码注入被分析程序的过程。
+这段代码主要进行了一个将方法计数的代码注入被分析程序的过程。实验先运行没有使用Deferred Method的方法计数程序，得出实验结果；然后运行加入了Defferred Method的方法计数程序，对比效率的变化。接着程序在逐一加入本文提出的一些优化功能，对比它们在效率上带来的变化。注意到该过程是没有返回值的，所以带有返回值的功能在原代码的基础上进行了部分修改，代码如下：
+
+\begin{lstlisting}[language=Java]
+public class DiSLClass {
+	@ThreadLocal
+	public static final int freq = 50;
+	@ThreadLocal
+	public static int num=0;
+	@ThreadLocal
+	public static Ret<Integer> val;
+
+	@Before(marker=BodyMarker.class)
+	public static void onMethodEntry() {
+		num++;
+		if (num == freq) {
+			val = SimpleAnalysis.getProfile().testRet();
+
+		}
+		if (num == freq * 2) {
+			try {
+				if (val.get(SimpleAnalysis.getEnv()) != 1){
+					System.exit(1);
+
+				} else {
+					val = null;
+
+				}
+			} catch (InterruptedException e) {
+				e.printStackTrace();
+
+			}
+		}
+		SimpleAnalysis.getProfile().onMethodEntry();
+	}
+}
+\end{lstlisting}
+
+该段代码与之前代码的不同在于其并行的方法具有返回值，并且每隔50次方法调用即尝试取得返回值。
+
+该实验每个相同条件下的测试都会运行三次，计算使用时间，然后得出平均值进行分析。
 
 \subsection{实验结果}
 
-实验结果如下表所示。
+实验结果分为三部分，第一部分是测试检查点功能的数据，第二部分是测试影子线程功能的数据，第三部分是测试锁优化和返回值功能的数据。
+
+\subsubsection{检查点功能的数据}
+
+\begin{table}[htbp]
+	\centering
+	\bicaption[fig:dig1]{检查点数据的实验结果}{检查点数据的实验结果}{Table}{The test result of CheckPoint}
+	\begin{tabular}{c|c|c|c|c|c|c}
+		\hline
+		pmd & 5910.75 & 6477.75 & 8955.38 & 15251.9 & 10999 & 8085.88 \\
+		\hline
+		avrora & 25708.5 & 21888.9 & 22953.1 & 55394.9 & 42336.6 & 28957.2 \\
+		\hline
+		batik & 2985.25 & 3343.12 & 3780 & 7311.25 & 5746.5 & 4646.38 \\
+		\hline
+		fop & 1905.62 & 2569.12 & 3013.25 & 6954.38 & 5259.12 & 3757.25 \\
+		\hline
+		h2 & 38556.8 & 27864.1 & 39895.2 & 94455.6 & 66861.5 & 44737.8 \\
+		\hline
+		jython & 21601.6 & 24181.9 & 29322.6 & 77339.6 & 58188.8 & 36009.5 \\
+		\hline
+		luindex & 3655.38 & 3364.25 & 4637.88 & 11735.6 & 8389.38 & 5450 \\
+		\hline
+		lusearch & 15693.5 & 12859 & 15410.1 & 38546.4 & 27176 & 18320.4 \\
+		\hline
+		sunfulow & 66081.9 & 46959 & 48249.2 & 158186 & 107132 & 63192 \\
+		\hline
+		xalan & 18415.8 & 15559.4 & 16908.4 & 51323.6 & 34231.1 & 21890.9 \\
+		\hline
+	\end{tabular}
+\end{table}
+
+\subsubsection{检查点功能的数据}
+
+\begin{table}[htbp]
+	\centering
+	\bicaption[fig:dig1]{检查点数据的实验结果}{检查点数据的实验结果}{Table}{The test result of CheckPoint}
+	\begin{tabular}{c|c|c|c}
+		\hline
+		pmd & 5910.75 & 6477.75 & 10250.2 \\
+		\hline
+		avrora & 25708.5 & 21888.9 & 24962.1 \\
+		\hline
+		batik & 2985.25 & 3343.12 & 3461.88 \\
+		\hline
+		fop & 1905.62 & 2569.12 & 3445 \\
+		\hline
+		h2 & 38556.8 & 27864.1 & 37507.4 \\
+		\hline
+		jython & 21601.6 & 24181.9 & 27292.2 \\
+		\hline
+		luindex & 3655.38 & 3364.25 & 3652.88 \\
+		\hline
+		lusearch & 15693.5 & 12859 & 16205.4 \\
+		\hline
+		sunfulow & 66081.9 & 46959 & 57320.4 \\
+		\hline
+		xalan & 18415.8 & 15559.4 & 19318.4 \\
+		\hline
+	\end{tabular}
+\end{table}
+
+\subsubsection{检查点功能的数据}
+
+\begin{table}[htbp]
+	\centering
+	\bicaption[fig:dig1]{检查点数据的实验结果}{检查点数据的实验结果}{Table}{The test result of CheckPoint}
+	\begin{tabular}{c|c|c|c|c|c|c}
+		\hline
+		pmd & 459.5 & 214.375 & 502.125 \\
+		\hline
+		batik & 1827.75 & 1732.75 & 1928.75 \\
+		\hline
+		fop & 1554.75 & 926.5 & 1470.25 \\
+		\hline
+		jython & 3264.5 & 3098.12 & 3710.12 \\
+		\hline
+		luindex & 269.125 & 226.625 & 278.375 \\
+		\hline
+		lusearch & 2232.5 & 2017.38 & 2451.88 \\
+		\hline
+		sunfulow & 1938.88 & 2157.12 & 3274.38 \\
+		\hline
+	\end{tabular}
+\end{table}
