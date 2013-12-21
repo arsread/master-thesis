@@ -30,8 +30,9 @@
 
 \subsection{设计}
 
-检查点（CheckPoint）的设计思想是在原程序中加入一些点作为标记，在该点以前的所有缓存即可以作为该检查点所标记的缓存。对检查点所标记的缓存，检查点机制能提供两个接口：
+检查点（CheckPoint）的设计思想是在原程序中加入一些点作为标记，在该点以前的所有缓存即可以作为该检查点所标记的缓存。对检查点所标记的缓存，检查点机制能提供如图\ref{fig:code7}所示的两个接口：
 
+\begin{figure}[!htp]
 \begin{lstlisting}[language=Java]
 public interface ProcessingCheckPoint {
 
@@ -41,14 +42,19 @@ public interface ProcessingCheckPoint {
 
 }
 \end{lstlisting}
+\bicaption[fig:code6]{检查点的接口}{检查点的接口}{Table}{The interfaces of CheckPoint}
+\end{figure}
 
 其中isProcessed()方法返回一个布尔值，用以表示该检查点所标记的所有缓存是否已经处理完成；awaitProcessed()方法则是用以等待所标记的缓存执行完成，如果在调用方法时缓存尚未处理完成，则该进程会陷入阻塞。
 
-检查点的创建方法则是在DeferredEnv环境中加入相关的方法：
+检查点的创建方法则是在DeferredEnv环境中加入如图\ref{fig:code7}所示的相关方法：
 
+\begin{figure}[!htp]
 \begin{lstlisting}[language=Java]
 	public ProcessingCheckPoint createCheckPoint();
 \end{lstlisting}
+\bicaption[fig:code7]{检查点的创建}{检查点的创建}{Table}{The creation of CheckPoint}
+\end{figure}
 
 该方法返回一个检查点的类型的实例，用户可以在这之后使用该实例对程序的时序进行处理。
 
@@ -80,8 +86,9 @@ Deferred Method框架默认提供了几种并行处理的机制，如同步处�
 
 \subsection{设计}
 
-影子线程的创建接口被设计为以下的形式：
+影子线程的创建接口被设计为如图\ref{fig:code8}所示的形式：
 
+\begin{figure}[!htp]
 \begin{lstlisting}[language=Java]
 public ShadowThreadProc(int queueCapacity);
 
@@ -90,6 +97,8 @@ public ShadowThreadProc() {
 
 }
 \end{lstlisting}
+\bicaption[fig:code8]{影子线程的创建}{影子线程的创建}{Table}{The creation of Shadow Thread}
+\end{figure}
 
 它提供了两个默认的构造方法：在不传予参数时，构造方法将采用默认的值作为队列的长度。影子线程的使用和其他处理策略一样，都是采用createDeferredExecution中传递参数的方法。
 
@@ -103,8 +112,9 @@ public ShadowThreadProc() {
 
 \subsubsection{线程索引表}
 
-在影子线程中，一个索引表被维护，该表的索引为原程序的线程，每个索引都指向一个独立的处理线程。缓存类的代码被改写，其中通过字节码加入了一个handInThread()的方法，该方法获取执行该方法的线程，即属于该缓存的线程的引用，并将其提交给处理线程的分配程序。在收到这个引用的时候，分配程序索引哈希表，取得这个线程的引用所对应的处理线程；当没有处理线程的时候，说明该线程是第一次提交缓存，分配程序会为其初始化一个处理线程，并为该线程分配一个队列。其中关键的代码如下：
+在影子线程中，一个索引表被维护，该表的索引为原程序的线程，每个索引都指向一个独立的处理线程。缓存类的代码被改写，其中通过字节码加入了一个handInThread()的方法，该方法获取执行该方法的线程，即属于该缓存的线程的引用，并将其提交给处理线程的分配程序。在收到这个引用的时候，分配程序索引哈希表，取得这个线程的引用所对应的处理线程；当没有处理线程的时候，说明该线程是第一次提交缓存，分配程序会为其初始化一个处理线程，并为该线程分配一个队列。其中关键的代码如图\ref{fig:code9}所示：
 
+\begin{figure}[!htp]
 \begin{lstlisting}[language=Java]
 public void process(Buffer buffer) {
 	if (isRunning.get()) { // some buffers might be processed after the
@@ -132,6 +142,8 @@ private BlockingQueue<Runnable> getQueue(Thread thread) {
 
 }
 \end{lstlisting}
+\bicaption[fig:code8]{影子线程的实现}{影子线程的实现}{Table}{The implementation of Shadow Thread}
+\end{figure}
 
 其中，process(...)方法完成了取得对应的处理线程，并将缓存加入队列的过程；另一方面getQueue(...)方法则完成了检测处理线程是否存在，在其不存在的情况下进行初始化，并取得这个处理线程的队列的过程。
 
@@ -141,8 +153,9 @@ private BlockingQueue<Runnable> getQueue(Thread thread) {
 
 在本文中使用了jvmti来完成这一过程。jvmti是Java提供的一套接口，编程人员可以使用这套接口对Java代码的运行进行控制。它采用了一套类似代理的机制，通过事件驱动的形式，将需要执行的一些代码注册到事件中，每次事件发生的时候，即调用该段代码。
 
-在本文的实现中，即是通过jvmti，对虚拟机的线程加入了一个钩子(Hook)，使其在结束时，同时调用代码，通知相应的处理线程即将结束，代码如下：
+在本文的实现中，即是通过jvmti，对虚拟机的线程加入了一个钩子(Hook)，使其在结束时，同时调用代码，通知相应的处理线程即将结束，代码如\ref{fig:code9}：
 
+\begin{figure}[!htp]
 \begin{lstlisting}[language=Java]
 public static void onThreadDeath() {
 	...
@@ -154,6 +167,8 @@ public static void onThreadDeath() {
 	...
 }
 \end{lstlisting}
+\bicaption[fig:code9]{影子线程的终止}{影子线程的终止}{Table}{The termination of Shadow Thread}
+\end{figure}
 
 这段代码通过jvmti提供的一套C语言的接口，被注册到虚拟机中，之后虚拟机在线程即将结束的时候，这段代码被调用，从而能完成处理剩余线程、将当前线程的标志位设置为停止、向处理线程提出停止的请求并等待其停止的过程。
 
@@ -180,8 +195,9 @@ Java中的锁主要分为两种：
 
 对于显式锁的情况，由于以上几种锁都是基于java.util.concurrent.locks.Lock类中的lock()和unlock()方法的，故而解决的思路可以通过静态的方法，修改默认库中该类里lock()方法的行为，使之在调用lock()遇到阻塞的时候，先检查缓存的状态，如果缓存有可以被处理的调用，则先将缓存送交处理。
 
-隐式锁的情况则稍微复杂一点。synchronized关键字在Java中有两种用法，同步函数块和同步代码段。如以下代码所示：
+隐式锁的情况则稍微复杂一点。synchronized关键字在Java中有两种用法，同步函数块和同步代码段。如图\ref{fig:code10}所示：
 
+\begin{figure}[!htp]
 \begin{lstlisting}[language=Java]
 //同步函数块
 synchronized public void foo(){
@@ -195,6 +211,8 @@ public void foo(){
 	}
 }
 \end{lstlisting}
+\bicaption[fig:code10]{synchronized关键字的例子}{synchronized关键字的例子}{Table}{An example of synchronized keyword}
+\end{figure}
 
 前者以该类为锁，同步整个函数块；后者以SomeObj类为锁，同步相应的代码段。由于synchronized是Java语法中内置的关键字，Java虚拟机有相应的机制和字节码来处理，故而无法像显示锁一样通过静态修改库的方法来进行处理。
 
@@ -204,8 +222,9 @@ public void foo(){
 
 \subsubsection{显式锁}
 
-显式锁的修改在编译阶段即可完成，同样采用的是ASM作为工具，在字节码的层面进行修改。修改后的Lock中的lock()代码也为字节码，我们可以把它写成如下的Java代码：
+显式锁的修改在编译阶段即可完成，同样采用的是ASM作为工具，在字节码的层面进行修改。修改后的Lock中的lock()代码也为字节码，我们可以把它写成如\ref{fig:code11}所示的Java代码：
 
+\begin{figure}[!htp]
 \begin{lstlisting}[language=Java]
 
 public void Lock(){
@@ -220,6 +239,8 @@ public void renamedLock(){
 }
 
 \end{lstlisting}
+\bicaption[fig:code11]{显式锁的改写}{显式锁的改写}{Table}{The rewriting of explicit lock}
+\end{figure}
 
 该过程为：首先ASM从Java的库中找到并读入Lock类的字节码，对其进行分析，找到其中的lock()方法，将其名字和签名改写为renamedLock();而重写一个新的lock()方法，其行为是对系统的状态先进行判断，如果锁会被阻塞，则先处理当前的缓存，然后再调用原来的Lock()方法，即改写后的renamedLock()方法，进入阻塞。
 
@@ -227,8 +248,9 @@ public void renamedLock(){
 
 \subsubsection{隐式锁}
 
-隐式锁的修改是基于动态代码修改进行的。字节码是Java平台所采用的一种中间代码，由Java虚拟机进行执行，具有跨平台等有点，以隐式锁的两种形式为例子，我们看以下的一段程序：
+隐式锁的修改是基于动态代码修改进行的。字节码是Java平台所采用的一种中间代码，由Java虚拟机进行执行，具有跨平台等有点，以隐式锁的两种形式为例子，我们看如\ref{fig:code12}所示的一段程序：
 
+\begin{figure}[!htp]
 \begin{lstlisting}[language=Java]
 public class SyncSample {
 	synchronized public void foo(){
@@ -242,9 +264,12 @@ public class SyncSample {
 	}
 }
 \end{lstlisting}
+\bicaption[fig:code12]{隐式锁的例子}{隐式锁的例子}{Table}{An example of implicit lock}
+\end{figure}
 
-该段代码锁编译出来的字节码如下所示：
+该段代码锁编译出来的字节码如图\ref{fig:code14}所示：
 
+\begin{figure}[!htp]
 \begin{lstlisting}[language=Java]
 public class SyncSample extends java.lang.Object{
 	......
@@ -267,6 +292,8 @@ public class SyncSample extends java.lang.Object{
 	......
 }
 \end{lstlisting}
+\bicaption[fig:code14]{隐式锁的字节码}{隐式锁的字节码}{Table}{The bytecode of implicit lock}
+\end{figure}
 
 可以看到，synchronized方法是直接写在方法签名中的，而synchronized块则是用了特殊的字节吗monitorenter和monitorexit两个命令来标定整个synchronized代码块的范围。这两个字节码的使用是基于Java的Monitor的机制。
 
@@ -294,14 +321,17 @@ synchronized方法在字节码里并没有以monitorenter或者monitorexit的字
 
 由于返回值必须能提供同步的机制，从而实现线程在并行处理时取值与返回值的同步与时序的问题，故本小节所提出的方法使用了一个泛型类Ret<Obj>来将这些返回值的类型封装起来。
 
-返回值类型提供了多个接口，可以通过以下的Deferred Method的用户自定义接口的例子来表示其使用方式：
+返回值类型提供了多个接口，可以通过如图\ref{fig:code15}所示的Deferred Method的用户自定义接口的例子来表示其使用方式：
 
+\begin{figure}[!htp]
 \begin{lstlisting}[language=Java]
 public interface RetTestIntf extends Deferred{ 
 	Ret<Long> calc(long sum, long adder);
 	Ret<Integer> getPlusOne(int i);
 }
 \end{lstlisting}
+\bicaption[fig:code15]{返回类型的接口}{返回类型的接口}{Table}{The interface of return type}
+\end{figure}
 
 原本的方法的返回值应该是long和int，在采用了该接口之后，这两个方法被封装为Ret<Long>和Ret<Integer>。在实际使用中，当原程序调用这两个方法时，方法的调用信息被缓存，然后缓存返回一个没有设置值的Ret<Long>或者Ret<Integer>的类型的实例。
 
