@@ -26,33 +26,33 @@
 	\item 字节码动态生成。整个框架的行为对用户是透明的，字节码分析、方法行为的重写等过程都是由框架自动根据用户的需要完成的。
 \end{enumerate}
 
-通过使用改进后的方法,Deferred Method框架的功能得到了完善，开发者可以使用改进后的框架完成具有更多功能的并行程序，包括一定时序逻辑和返回值等，另外通过同步优化，该框架在效率上也有提高。相关的实验也表明，这些功能在表现上是符合预期的。总而言之，本文提出的优化为并行程序分析的开发者带来了更多的选择，提高了并行程序分析的适用范围。
+通过使用改进后的方法,Deferred Method框架的功能得到了完善，开发者可以使用改进后的框架完成具有更多功能的并行程序，包括一定时序逻辑和返回值等，另外通过同步优化，该框架在效率上也有提高。相关的实验也表明，这些功能在表现上是符合预期的。在检查点的使用上，如果使用频度得当，程序只会引入5\%$\sim$12\%左右的开销，但如果使用过于频繁，开销将变为原来的2倍；在影子线程上，由于机器和测试用例的限制，开销会比自适应的策略多16\%$\sim$20\%的开销；在锁优化上，优化后的程序比原来的并行能快10\%$\sim$53\%.总而言之，本文提出的优化为并行程序分析的开发者带来了更多的选择，提高了并行程序分析的适用范围。
 
   \keywords{\large 并行计算 \quad 程序分析 \quad 代码生成}
 \end{abstract}
 
 \begin{englishabstract}
 
-In recent years, with the development of computer hardware technique, some new systems has been invented to help high-performance processing, such as multi-core systems and distributed systems. Those technique help increase the efficiency of some large scale task, which make parallel programing a hot topic.Related usage of it has been applied to other fields.
+In recent years, with the development of computer hardware technique, some new systems has been invented to help high-performance processing, such as multi-core systems and distributed systems. Those technique help increase the efficiency of some large scale task, which make parallel programing a hot topic. Related usage of it has been applied to other fields.
 
-Program analysis is among such fields. Traditionally, there exsits some tasks of program analysis which has a high complexity. These tasks, which includes symbolic execution, point-to analysis, will consuming large amout of time for processing the analyzing. In these cases, developers was forced to make a trade-off between accuracy and efficiency.
+Program analysis is among such fields. Traditionally, there exist some tasks of program analysis which has a high complexity. These tasks, which includes symbolic execution, point-to analysis, will consuming large amount of time for processing the analyzing. In these cases, developers was forced to make a trade-off between accuracy and efficiency.
 
-With the assisstance of parallelization, this problem can somehow be reduced by executing the tasks simutaneously. It is found that many of the tasks in program analysis do not require returning a value as well as some executing order, which gives the possibility to parallelize them.
+With the assistance of parallelization, this problem can somehow be reduced by executing the tasks simultaneously. It is found that many of the tasks in program analysis do not require returning a value as well as some executing order, which gives the possibility to parallelize them.
 
 However other trade-off are introduced in such parallelization. Particularly, in some fine-grained tasks, overhead keeps high while inter-thread communication happens frequently. In extreme cases, the overhead will overwhelm the advantage of parallelization, which make it lose its motivation.
 
-Some frameworks aim to solve this problem. Deferred Method is representive by using a mechanism of buffering. Instead of processing such methods directly, it will first deposit the information of the method invokation to a thread-local buffer. Once the buffer is full, it will be handed it to the the processer which consists of a set of threads. Comparing to other similar frameworks, Deferred Method suports multi-threads, result aggregation and so on.
+Some frameworks aim to solve this problem. Deferred Method is representative by using a mechanism of buffering. Instead of processing such methods directly, it will first deposit the information of the method invocation to a thread-local buffer. Once the buffer is full, it will be handed it to the the processor which consists of a set of threads. Comparing to other similar frameworks, Deferred Method supports multi-threads, result aggregation and so on.
 
-In this dissertion, the implementation and optimiztion was performed based on the Deferred Method framework. The work contains CheckPoint which allows some coarser-grained task sets to execute in order, Shadow Thread which allows buffers produced by the same thread to be execute in order, an optimization of the sychronization in Java to help process the buffer quickly, and a implementation of methods which have return values.
+In this dissertation, the implementation and optimization was performed based on the Deferred Method framework. The work contains CheckPoint which allows some coarser-grained task sets to execute in order, Shadow Thread which allows buffers produced by the same thread to be execute in order, an optimization of the synchronization in Java to help process the buffer quickly, and a implementation of methods which have return values.
 
 The insights of this work include:
 
 \begin{enumerate}
-	\item High-level API. Programmers needn't care about the low-level implementation of this framework. They just have to know the interface of this framework and features, which can help them complete the configuration with a litte amount of code.
+	\item High-level API. Programmers needn't care about the low-level implementation of this framework. They just have to know the interface of this framework and features, which can help them complete the configuration with a little amount of code.
 	\item Dynamic code generation. The manners of the whole framework is transparent to the user. Bytecode parsing and method rewriting are performed by the framework automatically with the configuration written by the user.
 \end{enumerate}
 
-The features of Deferred Method become more abundant by such optimization and development. Programmers can use the modified framework to complete tasks with more various manners, such as certain time order and return values. On the other hand the synchronization optimization help increase the efficiency of the framework. Experiments on such works prooved that they matched the expection. In conclusion, such implementation and optimization bring more choices for programers who develop parallel programs, hence the suitable range of parallel program analysis is widen.
+The features of Deferred Method become more abundant by such optimization and development. Programmers can use the modified framework to complete tasks with more various manners, such as certain time order and return values. On the other hand the synchronization optimization help increase the efficiency of the framework. Experiments on such works proved that they matched the expectation. By using the CheckPoint properly, the program will introduce the overhead of just 5\% to 12\% while twice if it is used too frequently. The Shadow Thread strategy will introduce the overhead of 16\% to 20\% due to the limitation of both the machine and the program. Synchronization optimization can retrieve a speedup of 10\% to 53\%. In conclusion, such implementation and optimization bring more choices for programmers who develop parallel programs, hence the suitable range of parallel program analysis is widen.
 
   \englishkeywords{\large Parallelization, Program Analysis, Code Generation}
 \end{englishabstract}
