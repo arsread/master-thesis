@@ -52,19 +52,19 @@
 
 % 中文封面内容(关注内容而不是形式)
 \title{基于字节码动态生成的Java并行框架的建立与优化}
-\author{}
-\advisor{}
+\author{辛\quad{}锐}
+\advisor{戚正伟教授}
 \degree{硕士}
 \defenddate{2013年1月6日}
 \school{上海交通大学}
 \institute{软件学院}
-\studentnumber{}
+\studentnumber{1110379055}
 \major{软件工程}
 
 % 英文封面内容(关注内容而不是表现形式)
 \englishtitle{The Construction and Optimization of a Java Parallelization Framework Based on Dynamically Bytecode Generation}
-\englishauthor{}
-\englishadvisor{}
+\englishauthor{\textsc{Rui Xin}}
+\englishadvisor{Prof. \textsc{Zhengwei Qi}}
 \englishschool{Shanghai Jiao Tong University}
 \englishinstitute{\textsc{School of Software Engineering} \\
   \textsc{Shanghai Jiao Tong University} \\
